@@ -10,18 +10,18 @@ from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 import config
-from RishuMusic import LOGGER, YouTube, app
-from RishuMusic.misc import db
-from RishuMusic.utils.database import (add_active_chat, add_active_video_chat,
+from codex import LOGGER, YouTube, app
+from codex.misc import db
+from codex.utils.database import (add_active_chat, add_active_video_chat,
                                        get_lang, get_loop, group_assistant,
                                        is_autoend, music_on,
                                        remove_active_chat,
                                        remove_active_video_chat, set_loop)
-from RishuMusic.utils.exceptions import AssistantErr
-from RishuMusic.utils.formatters import check_duration, seconds_to_min, speed_converter
-from RishuMusic.utils.inline.play import stream_markup
-from RishuMusic.utils.stream.autoclear import auto_clean
-from RishuMusic.utils.thumbnails import get_thumb
+from codex.utils.exceptions import AssistantErr
+from codex.utils.formatters import check_duration, seconds_to_min, speed_converter
+from codex.utils.inline.play import stream_markup
+from codex.utils.stream.autoclear import auto_clean
+from codex.utils.thumbnails import get_thumb
 from strings import get_string
 
 
