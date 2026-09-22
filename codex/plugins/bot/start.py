@@ -7,15 +7,15 @@ from pyrogram.enums import ChatType
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import config
-from RishuMusic import app
-from RishuMusic.misc import _boot_
-from RishuMusic.plugins.sudo.sudoers import sudoers_list
-from RishuMusic.utils.database import (add_served_chat, add_served_user,
+from codex import app
+from codex.misc import _boot_
+from codex.plugins.sudo.sudoers import sudoers_list
+from codex.utils.database import (add_served_chat, add_served_user,
                                        blacklisted_chats, get_lang,
                                        is_banned_user, is_on_off)
-from RishuMusic.utils.decorators.language import LanguageStart
-from RishuMusic.utils.formatters import get_readable_time
-from RishuMusic.utils.inline import help_pannel, private_panel, start_panel
+from codex.utils.decorators.language import LanguageStart
+from codex.utils.formatters import get_readable_time
+from codex.utils.inline import help_pannel, private_panel, start_panel
 from config import BANNED_USERS
 from strings import get_string
 
