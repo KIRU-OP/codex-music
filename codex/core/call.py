@@ -10,18 +10,18 @@ from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 import config
-from codex import LOGGER, YouTube, app
-from codex.misc import db
-from codex.utils.database import (add_active_chat, add_active_video_chat,
+from RishuMusic import LOGGER, YouTube, app
+from RishuMusic.misc import db
+from RishuMusic.utils.database import (add_active_chat, add_active_video_chat,
                                        get_lang, get_loop, group_assistant,
                                        is_autoend, music_on,
                                        remove_active_chat,
                                        remove_active_video_chat, set_loop)
-from codex.utils.exceptions import AssistantErr
-from codex.utils.formatters import check_duration, seconds_to_min, speed_converter
-from codex.utils.inline.play import stream_markup
-from codex.utils.stream.autoclear import auto_clean
-from codex.utils.thumbnails import get_thumb
+from RishuMusic.utils.exceptions import AssistantErr
+from RishuMusic.utils.formatters import check_duration, seconds_to_min, speed_converter
+from RishuMusic.utils.inline.play import stream_markup
+from RishuMusic.utils.stream.autoclear import auto_clean
+from RishuMusic.utils.thumbnails import get_thumb
 from strings import get_string
 
 
@@ -332,18 +332,20 @@ class Call(PyTgCalls):
                         [
                             [
                                 InlineKeyboardButton(
-                                    "✙ ʌᴅᴅ ϻє вᴧʙʏ ✙",
+                                    "✙ ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ ✙",
                                     url=f"https://t.me/{app.username}?startgroup=true",
                                 ),
+                            ],
+                            [
                                 InlineKeyboardButton(
-                                    "⋞ ᴄʟᴏsє ⋟", callback_data="close_message"
+                                    "⋞ ᴄʟᴏsᴇ ⋟", callback_data="close_message"
                                 ),
-                            ]
+                            ],
                         ]
                     )
                     await app.send_message(
                         chat_id,
-                        "**🎵 𝐓ʜᴇ 𝐐ᴜᴇᴜᴇ 𝐇ᴀs 𝐅ɪɴɪsʜᴇᴅ. 𝐔sᴇ /play 𝐓ᴏ 𝐀ᴅᴅ 𝐌ᴏʀᴇ 𝐒ᴏɴɢs!!**",
+                        "🎶 **𝐐ᴜᴇᴜᴇ 𝐄ɴᴅᴇᴅ!** 𝐒ᴇɴᴅ /play ᴛᴏ ᴀᴅᴅ 𝐌ᴏʀᴇ 𝐒ᴏɴɢs ᴀɴᴅ ᴋᴇᴇᴘ ᴛʜᴇ ᴍᴜsɪᴄ ɢᴏɪɴɢ.",
                         reply_markup=buttons,
                     )
                 except:
@@ -357,18 +359,20 @@ class Call(PyTgCalls):
                         [
                             [
                                 InlineKeyboardButton(
-                                    "✙ ʌᴅᴅ ϻє вᴧʙʏ ✙",
+                                    "✙ ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ ✙",
                                     url=f"https://t.me/{app.username}?startgroup=true",
                                 ),
+                            ],
+                            [
                                 InlineKeyboardButton(
-                                    "⋞ ᴄʟᴏsє ⋟", callback_data="close_message"
+                                    "⋞ ᴄʟᴏsᴇ ⋟", callback_data="close_message"
                                 ),
-                            ]
+                            ],
                         ]
                     )
                     await app.send_message(
                         chat_id,
-                        "🎵 𝐓ʜᴇ 𝐐ᴜᴇᴜᴇ 𝐇ᴀs 𝐅ɪɴɪsʜᴇᴅ. 𝐔sᴇ /play 𝐓ᴏ 𝐀ᴅᴅ 𝐌ᴏʀᴇ 𝐒ᴏɴɢs!!",
+                        "🎶 𝐐ᴜᴇᴜᴇ 𝐄ɴᴅᴇᴅ! 𝐒ᴇɴᴅ /play ᴛᴏ ᴀᴅᴅ 𝐌ᴏʀᴇ 𝐒ᴏɴɢs ᴀɴᴅ ᴋᴇᴇᴘ ᴛʜᴇ ᴍᴜsɪᴄ ɢᴏɪɴɢ.",
                         reply_markup=buttons,
                     )
                 except:
