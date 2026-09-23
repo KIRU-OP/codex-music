@@ -9,7 +9,7 @@ from pyrogram.types import Message
 from py_yt import VideosSearch, Playlist
 
 # New (primary) API
-API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
+API_URL = os.environ.get("SHRUTI_API_URL", "ShrutiBotsehNASnuh9o77LtGxVjQ3")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "YOUR_API_KEY")
 
 # Old (fallback) API — used if the primary API fails
