@@ -10,11 +10,11 @@ from py_yt import VideosSearch, Playlist
 
 # New (primary) API
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-API_KEY = os.environ.get("SHRUTI_API_KEY", "YOUR_API_KEY")
+API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsPAVXJFsXdDeoJqDOe4NW")
 
 # Nubcoders API — used if the primary (Shruti) API fails
 NUBCODERS_BASE_URL = os.environ.get("NUBCODERS_BASE_URL", "https://api.nubcoders.com")
-NUBCODERS_API_TOKEN = os.environ.get("NUBCODERS_API_TOKEN", "nAlDNsdmqa")
+NUBCODERS_API_TOKEN = os.environ.get("NUBCODERS_API_TOKEN", "j9zapvFcUZ")
 
 # Old (last-resort fallback) API — used if both of the above fail
 OLD_API_URL = os.environ.get("MEOW_API_URL", "https://music.yukiapi.site")
