@@ -354,44 +354,36 @@ async def youtube_search_multi(query: str, limit: int = 5) -> list:
     return await _ytdlp_search_multi_fallback(query, limit=limit)
 
 
+async def _resolve_stream_url(candidate_urls: list) -> str:
+    """
+    Checks each candidate URL (in order) with a lightweight ranged GET to
+    confirm it actually serves media, and returns the first working one
+    for direct streaming. Nothing is downloaded to disk.
+    """
+    async with aiohttp.ClientSession() as session:
+        for url in candidate_urls:
+            try:
+                headers = {"Range": "bytes=0-1"}
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status in (200, 206):
+                        return url
+            except Exception:
+                continue
+    return None
+
+
 async def download_song(link: str) -> str:
     video_id = link.split("v=")[-1].split("&")[0] if "v=" in link else link
     if not video_id or len(video_id) < 3:
         return None
 
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
-
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
-        return file_path
-
     urls_to_try = [
         f"{API_URL}/download?url={video_id}&type=audio&api_key={API_KEY}",
         f"{OLD_API_URL}/stream/{video_id}?key={OLD_API_KEY}&type=audio&quality=128",
     ]
-
-    for stream_url in urls_to_try:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(stream_url, timeout=aiohttp.ClientTimeout(total=300)) as resp:
-                    if resp.status != 200:
-                        continue
-                    with open(file_path, "wb") as f:
-                        async for chunk in resp.content.iter_chunked(131072):
-                            f.write(chunk)
-
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
-                return file_path
-        except Exception:
-            pass
-
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-
-    return None
+    return await _resolve_stream_url(urls_to_try)
 
 
 async def download_video(link: str) -> str:
@@ -399,39 +391,11 @@ async def download_video(link: str) -> str:
     if not video_id or len(video_id) < 3:
         return None
 
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
-
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
-        return file_path
-
     urls_to_try = [
         f"{API_URL}/download?url={video_id}&type=video&api_key={API_KEY}",
         f"{OLD_API_URL}/stream/{video_id}?key={OLD_API_KEY}&type=video&quality=480",
     ]
-
-    for stream_url in urls_to_try:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(stream_url, timeout=aiohttp.ClientTimeout(total=600)) as resp:
-                    if resp.status != 200:
-                        continue
-                    with open(file_path, "wb") as f:
-                        async for chunk in resp.content.iter_chunked(131072):
-                            f.write(chunk)
-
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
-                return file_path
-        except Exception:
-            pass
-
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-
-    return None
+    return await _resolve_stream_url(urls_to_try)
 
 
 class YouTubeAPI:
