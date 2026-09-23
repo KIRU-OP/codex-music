@@ -10,7 +10,7 @@ from py_yt import VideosSearch, Playlist
 
 # New (primary) API
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-API_KEY = os.environ.get("SHRUTI_API_KEY", "YOUR_API_KEY")
+API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsPAVXJFsXdDeoJqDOe4NW")
 
 # Old (fallback) API — used if the primary API fails
 OLD_API_URL = os.environ.get("MEOW_API_URL", "https://music.yukiapi.site")
