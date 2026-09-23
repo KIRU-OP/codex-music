@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import re
 from typing import List, Union
@@ -8,10 +9,176 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from py_yt import VideosSearch, Playlist
 
+# Pyrogram bot client, used to upload/fetch cached songs from the cache
+# channel below. Adjust this import to match how your bot's Client
+# instance is actually exposed (e.g. `from YourBot import app`).
+from RishuMusic import app
+
 API_URL = os.environ.get("MEOW_API_URL", "https://music.yukiapi.site")
 API_KEY = os.environ.get("MEOW_API_KEY", "yuki_7df1554f161bfa6ac85a56d3ba917f36")  # 🔑 Get Key: @MeowApiRobot On Telegram
 
 DOWNLOAD_DIR = "downloads"
+
+# ---------------------------------------------------------------------------
+# Song cache channel
+# ---------------------------------------------------------------------------
+# Every song that gets downloaded is uploaded once to this channel, and its
+# Telegram file_id is remembered locally. The next time the same song is
+# requested, it's pulled straight from Telegram instead of being
+# re-downloaded from the source API — much faster, and saves bandwidth/quota.
+#
+# Setup:
+#   1. Add your bot as an ADMIN of the channel/group at
+#      https://t.me/+vbG1ayQcjWtiOTE9
+#   2. Get that chat's numeric id (forward any message from it to
+#      @userinfobot, or log update.chat.id the first time the bot sees a
+#      message from it) — an invite link alone isn't enough, Telegram's Bot
+#      API needs the numeric chat_id (looks like -100XXXXXXXXXX).
+#   3. Set it as an env var: export CACHE_CHANNEL_ID="-100XXXXXXXXXX"
+CACHE_CHANNEL_ID = int(os.environ.get("CACHE_CHANNEL_ID", "0") or "0")
+
+_SONG_CACHE_FILE = "song_cache.json"
+_cache_lock = asyncio.Lock()
+
+
+def _load_song_cache() -> dict:
+    if os.path.exists(_SONG_CACHE_FILE):
+        try:
+            with open(_SONG_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_song_cache(cache: dict):
+    try:
+        with open(_SONG_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except Exception:
+        pass
+
+
+_SONG_CACHE = _load_song_cache()
+
+
+async def _get_cached_entry(video_id: str, kind: str):
+    """kind is 'audio' or 'video' — each is cached separately since they're
+    different Telegram file_ids."""
+    entry = _SONG_CACHE.get(video_id)
+    if entry:
+        return entry.get(kind)
+    return None
+
+
+async def _download_thumb(thumbnail_url: str, video_id: str) -> Union[str, None]:
+    if not thumbnail_url:
+        return None
+    thumb_path = os.path.join(DOWNLOAD_DIR, f"{video_id}_thumb.jpg")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(thumbnail_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return None
+                with open(thumb_path, "wb") as f:
+                    f.write(await resp.read())
+        return thumb_path
+    except Exception:
+        return None
+
+
+_cache_queue: "asyncio.Queue" = asyncio.Queue()
+_cache_worker_started = False
+
+
+def start_cache_worker():
+    """Starts the background worker that keeps pushing every played song
+    into the cache channel, one at a time. Call this ONCE at bot startup
+    (e.g. right after you start your Pyrogram Client), from inside a
+    running event loop:
+
+        from RishuMusic.platforms.Youtube import start_cache_worker
+        start_cache_worker()
+
+    Without this the queue still fills up, it just never drains — songs
+    would download fine but never get pushed to the channel."""
+    global _cache_worker_started
+    if _cache_worker_started:
+        return
+    _cache_worker_started = True
+    asyncio.get_event_loop().create_task(_cache_worker())
+
+
+async def _cache_worker():
+    """Runs forever in the background, processing one queued song at a
+    time so the group's playback is never blocked and Telegram doesn't
+    rate-limit the bot from too many parallel uploads."""
+    while True:
+        video_id, file_path, kind = await _cache_queue.get()
+        try:
+            await _upload_to_cache_channel(video_id, file_path, kind)
+        except Exception:
+            pass
+        finally:
+            _cache_queue.task_done()
+
+
+def queue_for_caching(video_id: str, file_path: str, kind: str):
+    """Drops a freshly-downloaded song/video onto the background queue so
+    the worker uploads it to the cache channel without delaying playback."""
+    if not CACHE_CHANNEL_ID:
+        return
+    start_cache_worker()  # lazy-start as a safety net if not started at boot
+    _cache_queue.put_nowait((video_id, file_path, kind))
+
+
+async def _upload_to_cache_channel(video_id: str, file_path: str, kind: str):
+    """Uploads one song/video to the cache channel and remembers its
+    file_id for next time. Called only by _cache_worker — don't call this
+    directly from playback code, use queue_for_caching() instead."""
+    if not CACHE_CHANNEL_ID:
+        return
+    try:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        results = await _v3_search(video_id, limit=1)
+        title = results[0]["title"] if results else video_id
+        duration = results[0]["duration_min"] if results else ""
+        thumb_url = results[0]["thumbnail"] if results else ""
+        thumb_path = await _download_thumb(thumb_url, video_id)
+
+        caption = f"{title}\n{duration}\nhttps://www.youtube.com/watch?v={video_id}"
+        if kind == "video":
+            sent = await app.send_video(
+                chat_id=CACHE_CHANNEL_ID,
+                video=file_path,
+                caption=caption,
+                thumb=thumb_path,
+            )
+            file_id = sent.video.file_id
+        else:
+            sent = await app.send_audio(
+                chat_id=CACHE_CHANNEL_ID,
+                audio=file_path,
+                caption=caption,
+                title=title,
+                thumb=thumb_path,
+            )
+            file_id = sent.audio.file_id
+
+        async with _cache_lock:
+            entry = _SONG_CACHE.get(video_id, {})
+            entry[kind] = file_id
+            entry["title"] = title
+            _SONG_CACHE[video_id] = entry
+            _save_song_cache(_SONG_CACHE)
+    except Exception:
+        pass
+    finally:
+        if thumb_path and os.path.exists(thumb_path):
+            try:
+                os.remove(thumb_path)
+            except Exception:
+                pass
 
 # ---------------------------------------------------------------------------
 # YouTube Data API v3 — key pool
@@ -360,6 +527,17 @@ async def download_song(link: str) -> str:
     if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
         return file_path
 
+    # Cache hit — this song was played before, pull it from the cache
+    # channel instead of hitting the source API again.
+    cached_file_id = await _get_cached_entry(video_id, "audio")
+    if cached_file_id:
+        try:
+            await app.download_media(cached_file_id, file_name=file_path)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
+                return file_path
+        except Exception:
+            pass  # fall through to a normal download below
+
     try:
         async with aiohttp.ClientSession() as session:
             stream_url = f"{API_URL}/stream/{video_id}?key={API_KEY}&type=audio&quality=128"
@@ -371,6 +549,7 @@ async def download_song(link: str) -> str:
                         f.write(chunk)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
+            queue_for_caching(video_id, file_path, "audio")
             return file_path
         return None
     except Exception:
@@ -393,6 +572,15 @@ async def download_video(link: str) -> str:
     if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
         return file_path
 
+    cached_file_id = await _get_cached_entry(video_id, "video")
+    if cached_file_id:
+        try:
+            await app.download_media(cached_file_id, file_name=file_path)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
+                return file_path
+        except Exception:
+            pass
+
     try:
         async with aiohttp.ClientSession() as session:
             stream_url = f"{API_URL}/stream/{video_id}?key={API_KEY}&type=video&quality=480"
@@ -404,6 +592,7 @@ async def download_video(link: str) -> str:
                         f.write(chunk)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 10000:
+            queue_for_caching(video_id, file_path, "video")
             return file_path
         return None
     except Exception:
