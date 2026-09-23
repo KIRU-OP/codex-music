@@ -10,13 +10,9 @@ from py_yt import VideosSearch, Playlist
 
 # New (primary) API
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsPAVXJFsXdDeoJqDOe4NW")
+API_KEY = os.environ.get("SHRUTI_API_KEY", "YOUR_API_KEY")
 
-# Nubcoders API — used if the primary (Shruti) API fails
-NUBCODERS_BASE_URL = os.environ.get("NUBCODERS_BASE_URL", "https://api.nubcoders.com")
-NUBCODERS_API_TOKEN = os.environ.get("NUBCODERS_API_TOKEN", "j9zapvFcUZ")
-
-# Old (last-resort fallback) API — used if both of the above fail
+# Old (fallback) API — used if the primary API fails
 OLD_API_URL = os.environ.get("MEOW_API_URL", "https://music.yukiapi.site")
 OLD_API_KEY = os.environ.get("MEOW_API_KEY", "yuki_7df1554f161bfa6ac85a56d3ba917f36")  # 🔑 Get Key: @MeowApiRobot On Telegram
 
@@ -146,63 +142,6 @@ def _extract_video_id_from_query(query: str) -> Union[str, None]:
     return None
 
 
-async def _nubcoders_search(query: str, limit: int = 1) -> list:
-    """
-    Free Nubcoders /search endpoint (no token needed) — used as a
-    quota-free middle fallback between the YouTube Data API v3 and the
-    slower yt-dlp search, when v3 keys are exhausted or unconfigured.
-    Returns a normalized list of dicts: id, title, duration_sec,
-    duration_min, thumbnail, link. Returns [] if the API doesn't answer
-    or its response shape doesn't match what we expect.
-    """
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{NUBCODERS_BASE_URL}/search",
-                params={"q": query, "max_results": limit},
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                if resp.status != 200:
-                    body_preview = (await resp.text())[:300]
-                    print(f"[nubcoders-search] HTTP {resp.status}: {body_preview}")
-                    return []
-                data = await resp.json(content_type=None)
-    except Exception as e:
-        print(f"[nubcoders-search] error: {type(e).__name__}: {e}")
-        return []
-
-    raw_results = data.get("results", []) if isinstance(data, dict) else []
-    results = []
-    for item in raw_results:
-        if not isinstance(item, dict):
-            continue
-        vid = item.get("id") or item.get("video_id") or item.get("videoId")
-        if not vid:
-            link = item.get("link") or item.get("url") or ""
-            vid = _extract_video_id_from_query(link)
-        if not vid:
-            continue
-        dur_sec = int(item.get("duration_sec") or item.get("duration") or 0)
-        thumb = (
-            item.get("thumbnail")
-            or item.get("thumb")
-            or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
-        )
-        results.append(
-            {
-                "id": vid,
-                "title": item.get("title") or "Unknown",
-                "duration_sec": dur_sec,
-                "duration_min": _seconds_to_min_str(dur_sec),
-                "channel": item.get("channel") or item.get("uploader") or "",
-                "thumbnails": [{"url": thumb}] if thumb else [],
-                "thumbnail": thumb,
-                "link": f"https://www.youtube.com/watch?v={vid}",
-            }
-        )
-    return results
-
-
 async def _ytdlp_search_fallback(query: str, limit: int = 1) -> list:
     """
     Quota-free fallback used only when the entire YOUTUBE_API_KEYS pool is
@@ -301,12 +240,7 @@ async def _v3_search(query: str, limit: int = 1) -> list:
                             )
                         return results
 
-    # v3 keys exhausted/unconfigured/failed — try the free Nubcoders search
-    # before falling back to the slower yt-dlp search.
-    nubcoders_results = await _nubcoders_search(query, limit=limit)
-    if nubcoders_results:
-        return nubcoders_results
-
+    # Every key exhausted, none configured, or the API call failed outright.
     return await _ytdlp_search_fallback(query, limit=limit)
 
 
@@ -417,54 +351,7 @@ async def youtube_search_multi(query: str, limit: int = 5) -> list:
                     return results
 
     # Every key exhausted, none configured, or the API call failed outright.
-    # Try the free Nubcoders search before the slower yt-dlp fallback.
-    nubcoders_results = await _nubcoders_search(query, limit=limit)
-    if nubcoders_results:
-        return nubcoders_results
-
     return await _ytdlp_search_multi_fallback(query, limit=limit)
-
-
-async def _get_nubcoders_stream_url(video_id: str) -> str:
-    """
-    Calls Nubcoders' /info endpoint (which returns JSON metadata + a direct
-    stream URL, rather than a raw media URL you can guess) and pulls out
-    the stream URL. Returns None if the API doesn't return one.
-    """
-    query = f"https://www.youtube.com/watch?v={video_id}"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{NUBCODERS_BASE_URL}/info",
-                params={"token": NUBCODERS_API_TOKEN, "q": query, "max_results": 1},
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as resp:
-                if resp.status != 200:
-                    body_preview = (await resp.text())[:300]
-                    print(f"[nubcoders] HTTP {resp.status}: {body_preview}")
-                    return None
-                data = await resp.json(content_type=None)
-    except Exception as e:
-        print(f"[nubcoders] error: {type(e).__name__}: {e}")
-        return None
-
-    # Response shape isn't fully known — check the common places a stream
-    # URL might live.
-    item = data
-    if isinstance(data, dict):
-        if isinstance(data.get("results"), list) and data["results"]:
-            item = data["results"][0]
-        elif isinstance(data.get("result"), dict):
-            item = data["result"]
-
-    if isinstance(item, dict):
-        for key in ("stream_url", "url", "direct_url", "download_url", "audio_url", "video_url", "link"):
-            value = item.get(key)
-            if value:
-                return value
-
-    print(f"[nubcoders] no stream URL found in response: {str(data)[:300]}")
-    return None
 
 
 async def _resolve_stream_url(candidate_urls: list) -> str:
@@ -475,8 +362,6 @@ async def _resolve_stream_url(candidate_urls: list) -> str:
     """
     async with aiohttp.ClientSession() as session:
         for url in candidate_urls:
-            if not url:
-                continue
             try:
                 headers = {"Range": "bytes=0-1"}
                 async with session.get(
@@ -484,14 +369,8 @@ async def _resolve_stream_url(candidate_urls: list) -> str:
                 ) as resp:
                     if resp.status in (200, 206):
                         return url
-                    body_preview = (await resp.text())[:300]
-                    print(f"[stream-check] {url} -> HTTP {resp.status}: {body_preview}")
-            except asyncio.TimeoutError:
-                print(f"[stream-check] {url} -> timed out")
-            except aiohttp.ClientConnectorError as e:
-                print(f"[stream-check] {url} -> connection failed: {e}")
-            except Exception as e:
-                print(f"[stream-check] {url} -> error: {type(e).__name__}: {e}")
+            except Exception:
+                continue
     return None
 
 
@@ -500,11 +379,8 @@ async def download_song(link: str) -> str:
     if not video_id or len(video_id) < 3:
         return None
 
-    nubcoders_url = await _get_nubcoders_stream_url(video_id)
-
     urls_to_try = [
         f"{API_URL}/download?url={video_id}&type=audio&api_key={API_KEY}",
-        nubcoders_url,
         f"{OLD_API_URL}/stream/{video_id}?key={OLD_API_KEY}&type=audio&quality=128",
     ]
     return await _resolve_stream_url(urls_to_try)
