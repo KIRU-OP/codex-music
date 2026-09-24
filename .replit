@@ -1,7 +1,0 @@
-modules = ["python-base-3.13"]
-
-[nix]
-channel = "stable-25_05"
-packages = ["cacert", "ffmpeg-full", "gettext", "gmp", "libyaml"]
-
-run = "python -m codex"
