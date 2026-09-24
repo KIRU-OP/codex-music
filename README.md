@@ -1,3 +1,53 @@
+# JioSaavn Telegram VC Music Bot
+
+This project uses the playback engine from
+[codex-music](https://github.com/KIRU-OP/codex-music) and the public
+JioSaavn API flow from
+[jio-1](https://github.com/KIRU-OP/jio-1).
+
+## Features
+
+- `/play <song name>` searches JioSaavn and plays the first result in the
+  group's active voice chat.
+- `/play` with a JioSaavn song URL also works.
+- Existing codex controls continue to work: `/pause`, `/resume`, `/skip`,
+  `/queue`, `/shuffle`, and `/end`.
+- Audio is downloaded once into `downloads/` and reused from the local cache.
+- `JIOSAAVN_API_URL` is configurable; the default calls JioSaavn directly.
+
+## Required environment
+
+Copy `sample.env` to `.env` and fill in:
+
+```env
+API_ID=
+API_HASH=
+BOT_TOKEN=
+MONGO_DB_URI=
+OWNER_ID=
+LOGGER_ID=
+STRING_SESSION=
+JIOSAAVN_API_URL=https://www.jiosaavn.com/api.php
+JIOSAAVN_QUALITY=160
+```
+
+The assistant account from `STRING_SESSION` must be a member/admin of the
+group and must be allowed to join voice chats. The bot also needs admin
+permissions in the group. Start a voice chat before using `/play`.
+
+## Run
+
+```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg
+pip install -r requirements.txt
+python -m codex
+```
+
+Never commit `.env`, Telegram sessions, bot tokens, API credentials, or
+MongoDB URLs. Use Replit Secrets for deployment.
+
+---
+
 <h1 align="center">
   <img src="https://capsule-render.vercel.app/api?type=waving&color=timeGradient&height=220&section=header&text=codexMusic&fontSize=80&animation=fadeIn&fontAlignY=35" />
 </h1>
