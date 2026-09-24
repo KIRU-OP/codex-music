@@ -5,7 +5,7 @@ from typing import Union
 from pyrogram.types import InlineKeyboardMarkup
 
 import config
-from codex import Carbon, JioSaavn, YouTube, app
+from codex import Carbon, YouTube, app
 from codex.core.call import Anony
 from codex.misc import db
 from codex.utils.database import add_active_video_chat, is_active_chat
@@ -191,74 +191,6 @@ async def stream(
                 photo=img,
                 caption=_["stream_1"].format(
                     f"https://t.me/{app.username}?start=info_{vidid}",
-                    title[:23],
-                    duration_min,
-                    user_name,
-                ),
-                reply_markup=InlineKeyboardMarkup(button),
-            )
-            db[chat_id][0]["mystic"] = run
-            db[chat_id][0]["markup"] = "stream"
-    elif streamtype == "jiosaavn":
-        link = result["link"]
-        vidid = result["vidid"]
-        title = result["title"].title()
-        duration_min = result["duration_min"]
-        thumbnail = result["thumb"]
-        # JioSaavn's public media links are audio-only; /vplay falls back to
-        # audio instead of asking PyTgCalls to decode an MP3 as video.
-        status = None
-        try:
-            file_path = await JioSaavn.download(vidid)
-        except Exception:
-            raise AssistantErr(_["play_14"])
-        if await is_active_chat(chat_id):
-            await put_queue(
-                chat_id,
-                original_chat_id,
-                file_path,
-                title,
-                duration_min,
-                user_name,
-                vidid,
-                user_id,
-                "video" if video else "audio",
-            )
-            position = len(db.get(chat_id)) - 1
-            button = aq_markup(_, chat_id)
-            await app.send_message(
-                chat_id=original_chat_id,
-                text=_["queue_4"].format(position, title[:27], duration_min, user_name),
-                reply_markup=InlineKeyboardMarkup(button),
-            )
-        else:
-            if not forceplay:
-                db[chat_id] = []
-            await Anony.join_call(
-                chat_id,
-                original_chat_id,
-                file_path,
-                video=status,
-                image=thumbnail,
-            )
-            await put_queue(
-                chat_id,
-                original_chat_id,
-                file_path,
-                title,
-                duration_min,
-                user_name,
-                vidid,
-                user_id,
-                "video" if video else "audio",
-                forceplay=forceplay,
-            )
-            button = stream_markup(_, chat_id)
-            run = await app.send_photo(
-                original_chat_id,
-                photo=thumbnail or config.STREAM_IMG_URL,
-                caption=_["stream_1"].format(
-                    link or config.SUPPORT_CHAT,
                     title[:23],
                     duration_min,
                     user_name,
