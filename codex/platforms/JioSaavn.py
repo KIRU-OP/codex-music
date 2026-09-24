@@ -16,7 +16,7 @@ from Crypto.Cipher import DES
 
 
 JIOSAAVN_API_URL = os.environ.get(
-    "JIOSAAVN_API_URL", "https://www.jiosaavn.com/api.php"
+    "JIOSAAVN_API_URL", "http://jiosaavn-api.np564605.workers.dev/"
 ).rstrip("/")
 JIOSAAVN_QUALITY = os.environ.get("JIOSAAVN_QUALITY", "160")
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "downloads"))
