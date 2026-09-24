@@ -31,4 +31,3 @@ openai
 pykeyboard
 numpy
 PyGithub
-pycryptodome
