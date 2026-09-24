@@ -13,7 +13,8 @@ JioSaavn API flow from
 - Existing codex controls continue to work: `/pause`, `/resume`, `/skip`,
   `/queue`, `/shuffle`, and `/end`.
 - Audio is downloaded once into `downloads/` and reused from the local cache.
-- `JIOSAAVN_API_URL` is configurable; the default calls JioSaavn directly.
+- `JIOSAAVN_API_URL` and `JIOSAAVN_API_MODE` are configurable. The example
+  uses the protected jio-1-compatible API deployment.
 
 ## Required environment
 
@@ -28,8 +29,21 @@ OWNER_ID=
 LOGGER_ID=
 STRING_SESSION=
 JIOSAAVN_API_URL=https://www.jiosaavn.com/api.php
+JIOSAAVN_API_MODE=direct
 JIOSAAVN_QUALITY=160
 ```
+
+For a protected jio-1-compatible deployment, use:
+
+```env
+JIOSAAVN_API_URL=https://jiosaavn-api.np564605.workers.dev
+JIOSAAVN_API_MODE=jio1
+CF_ACCESS_CLIENT_ID=
+CF_ACCESS_CLIENT_SECRET=
+```
+
+Keep the Cloudflare Access values in your deployment's secret manager. Do not
+commit them to GitHub.
 
 The assistant account from `STRING_SESSION` must be a member/admin of the
 group and must be allowed to join voice chats. The bot also needs admin
