@@ -7,7 +7,7 @@ from pyrogram.errors.exceptions.bad_request_400 import MessageIdInvalid
 from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
-from codex import Apple, JioSaavn, Resso, SoundCloud, Spotify, Telegram, YouTube, app
+from codex import Apple, Resso, SoundCloud, Spotify, Telegram, YouTube, app
 from codex.core.call import Anony
 from codex.utils import seconds_to_min, time_to_seconds
 from codex.utils.channelplay import get_channeplayCB
@@ -185,14 +185,6 @@ async def play_commnd(
                     details["title"],
                     details["duration_min"],
                 )
-        elif await JioSaavn.valid(url):
-            try:
-                details, track_id = await JioSaavn.track(url)
-            except Exception:
-                return await mystic.edit_text(_["play_3"])
-            streamtype = "jiosaavn"
-            img = details["thumb"]
-            cap = _["play_10"].format(details["title"], details["duration_min"])
         elif await Spotify.valid(url):
             spotify = True
             if not config.SPOTIFY_CLIENT_ID and not config.SPOTIFY_CLIENT_SECRET:
@@ -332,17 +324,15 @@ async def play_commnd(
                 _["play_18"],
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
-        slider = False
+        slider = True
         query = message.text.split(None, 1)[1]
         if "-v" in query:
             query = query.replace("-v", "")
         try:
-            details, track_id = await JioSaavn.track(query)
+            details, track_id = await YouTube.track(query)
         except:
             return await mystic.edit_text(_["play_3"])
-        streamtype = "jiosaavn"
-        img = details["thumb"]
-        cap = _["play_10"].format(details["title"], details["duration_min"])
+        streamtype = "youtube"
     if str(playmode) == "Direct":
         if not plist_type:
             if details["duration_min"]:
@@ -471,12 +461,7 @@ async def play_music(client, CallbackQuery, _):
         _["play_2"].format(channel) if channel else _["play_1"]
     )
     try:
-        if vidid.startswith("jio_"):
-            details, track_id = await JioSaavn.track(vidid)
-            selected_streamtype = "jiosaavn"
-        else:
-            details, track_id = await YouTube.track(vidid, True)
-            selected_streamtype = "youtube"
+        details, track_id = await YouTube.track(vidid, True)
     except:
         return await mystic.edit_text(_["play_3"])
     if details["duration_min"]:
@@ -510,7 +495,7 @@ async def play_music(client, CallbackQuery, _):
             user_name,
             CallbackQuery.message.chat.id,
             video,
-            streamtype=selected_streamtype,
+            streamtype="youtube",
             forceplay=ffplay,
         )
     except Exception as e:
