@@ -14,8 +14,8 @@ from py_yt import VideosSearch, Playlist
 # instance is actually exposed (e.g. `from YourBot import app`).
 from codex import app
 
-API_URL = os.environ.get("MEOW_API_URL", "")
-API_KEY = os.environ.get("MEOW_API_KEY", "")
+API_URL = os.environ.get("MEOW_API_URL", "https://music.yukiapi.site")
+API_KEY = os.environ.get("MEOW_API_KEY", "yuki_7df1554f161bfa6ac85a56d3ba917f36")  # 🔑 Get Key: @MeowApiRobot On Telegram
 
 DOWNLOAD_DIR = "downloads"
 
@@ -194,7 +194,7 @@ async def _upload_to_cache_channel(video_id: str, file_path: str, kind: str):
 # pool below rotates to the next key on quotaExceeded, so effective daily
 # quota = 10,000 × number of keys. Only when every key is exhausted does it
 # fall back to a quota-free yt-dlp search (see _ytdlp_search_fallback).
-_raw_keys = os.environ.get("YOUTUBE_API_KEYS", "").strip()
+_raw_keys = os.environ.get("YOUTUBE_API_KEYS", "AIzaSyAuWd41xKkkd0HDq87dK9jHffW6lKzKWJs, AIzaSyBT9ffbKLBhRQDr8WWt3IH4FcXqenFjoO0, AIzaSyB3Mf15uCZ3oqpWRRScj9jxDt0WUI0YYJc").strip()
 YOUTUBE_API_KEYS: List[str] = [k.strip() for k in _raw_keys.split(",") if k.strip()]
 
 YOUTUBE_V3_BASE_URL = "https://www.googleapis.com/youtube/v3"
