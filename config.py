@@ -7,8 +7,8 @@ from pyrogram import filters
 load_dotenv()
 
 # Get this value from my.telegram.org/apps
-API_ID = int(getenv("API_ID","14050586"))
-API_HASH = getenv("API_HASH","42a60d9c657b106370c79bb0a8ac560c")
+API_ID = int(getenv("API_ID", "0"))
+API_HASH = getenv("API_HASH", "")
 
 # Get your token from @BotFather on Telegram.
 BOT_TOKEN = getenv("BOT_TOKEN")
@@ -17,8 +17,8 @@ BOT_TOKEN = getenv("BOT_TOKEN")
 MONGO_DB_URI = getenv("MONGO_DB_URI", "")
 
 # Vars For API End Pont.
-YTPROXY_URL = getenv("YTPROXY_URL", 'https://tgapi.xbitcode.com') ## xBit Music Endpoint.
-YT_API_KEY = getenv("YT_API_KEY" , "xbit_J1HWP7C5W9RWYK7WS95T4B" ) ## Your API key like: xbit_10000000xx0233 Get from  https://t.me/tgmusic_apibot
+YTPROXY_URL = getenv("YTPROXY_URL", "")
+YT_API_KEY = getenv("YT_API_KEY", "")
 # ── External APIs ──────────────────────────────────────────────────────────
 COOKIE_URL = getenv("COOKIE_URL", "https://pastebin.com/RurxsvMF")
 API_URL = getenv("API_URL")        # optional
@@ -29,10 +29,10 @@ DEEP_API = getenv("DEEP_API")      # optional
 DURATION_LIMIT_MIN = int(getenv("DURATION_LIMIT", 300))
 
 # Chat id of a group for logging bot's activities
-LOGGER_ID = int(getenv("LOGGER_ID","-1001992970818"))
+LOGGER_ID = int(getenv("LOGGER_ID", "0"))
 
 # Get this value from @FallenxBot on Telegram by /id
-OWNER_ID = int(getenv("OWNER_ID","5738579437"))
+OWNER_ID = int(getenv("OWNER_ID", "0"))
 
 ## Fill these variables if you're deploying on heroku.
 # Your heroku app name
@@ -54,8 +54,12 @@ SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/+Dv-MzFXDPCdkNWU1")
 
 
 # Vars For API End Pont.
-YTPROXY_URL = getenv("YTPROXY_URL", 'https://tgapi.xbitcode.com') ## xBit Music Endpoint.
-YT_API_KEY = getenv("YT_API_KEY" , None ) ## Your API key like: xbit_10000000xx0233 Get from  https://t.me/tgmusic_apibot
+YTPROXY_URL = getenv("YTPROXY_URL", "")
+YT_API_KEY = getenv("YT_API_KEY", None)
+
+# JioSaavn adapter. The default uses JioSaavn's public API directly.
+JIOSAAVN_API_URL = getenv("JIOSAAVN_API_URL", "https://www.jiosaavn.com/api.php")
+JIOSAAVN_QUALITY = getenv("JIOSAAVN_QUALITY", "160")
 
 # Set this to True if you want the assistant to automatically leave chats after an interval
 AUTO_LEAVING_ASSISTANT = bool(getenv("AUTO_LEAVING_ASSISTANT", True))
@@ -63,8 +67,8 @@ ASSISTANT_LEAVE_TIME = int(getenv("ASSISTANT_LEAVE_TIME",  5400))
 
 
 # Get this credentials from https://developer.spotify.com/dashboard
-SPOTIFY_CLIENT_ID = getenv("SPOTIFY_CLIENT_ID", "1c21247d714244ddbb09925dac565aed")
-SPOTIFY_CLIENT_SECRET = getenv("SPOTIFY_CLIENT_SECRET", "709e1a2969664491b58200860623ef19")
+SPOTIFY_CLIENT_ID = getenv("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_CLIENT_SECRET = getenv("SPOTIFY_CLIENT_SECRET", "")
 
 
 # Maximum limit for fetching playlist's track from youtube, spotify, apple links.
