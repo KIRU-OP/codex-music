@@ -41,14 +41,6 @@ def clear(text):
 
 
 async def get_thumb(videoid,user_id):
-    if str(videoid).startswith("jio_"):
-        try:
-            from codex import JioSaavn
-
-            song, _ = await JioSaavn.track(str(videoid))
-            return song["thumb"] or YOUTUBE_IMG_URL
-        except Exception:
-            return YOUTUBE_IMG_URL
     if os.path.isfile(f"cache/{videoid}_{user_id}.png"):
         return f"cache/{videoid}_{user_id}.png"
 
