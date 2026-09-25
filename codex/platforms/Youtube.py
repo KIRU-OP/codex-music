@@ -20,12 +20,12 @@ try:
 except ImportError:
     Recommendations = None
 import base64
-from nexo import LOGGER
-from nexo.utils.database import is_on_off
-from nexo.utils.formatters import time_to_seconds
-from nexo.utils.url_guard import is_safe_media_url
-from nexo.security import build_subprocess_env
-from nexo.utils.stream.source_status import set_youtube_source_status
+from codex import LOGGER
+from codex.utils.database import is_on_off
+from codex.utils.formatters import time_to_seconds
+from codex.utils.url_guard import is_safe_media_url
+from codex.security import build_subprocess_env
+from codex.utils.stream.source_status import set_youtube_source_status
 from config import DURATION_LIMIT, YT_API_KEY, YTPROXY_URL, autoclean
 
 logger = LOGGER(__name__)
