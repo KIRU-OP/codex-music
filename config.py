@@ -58,7 +58,7 @@ YTPROXY_URL = getenv("YTPROXY_URL", 'https://tgapi.xbitcode.com') ## xBit Music 
 YT_API_KEY = getenv("YT_API_KEY" , None ) ## Your API key like: xbit_10000000xx0233 Get from  https://t.me/tgmusic_apibot
 
 # Set this to True if you want the assistant to automatically leave chats after an interval
-AUTO_LEAVING_ASSISTANT = bool(getenv("AUTO_LEAVING_ASSISTANT", True))
+AUTO_LEAVING_ASSISTANT = bool(getenv("AUTO_LEAVING_ASSISTANT", "false"))
 ASSISTANT_LEAVE_TIME = int(getenv("ASSISTANT_LEAVE_TIME",  5400))
 
 
