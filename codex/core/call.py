@@ -6,6 +6,32 @@ from typing import Union
 from ntgcalls import ConnectionNotFound, TelegramServerError
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+# --- WORKAROUND SHIM -------------------------------------------------------
+# pytgcalls' internal client tries `from pyrogram.errors import
+# GroupcallForbidden`. Depending on which pyrogram fork (pyrogram vs
+# Kurigram vs pyrofork) ends up installed, that class may not exist, or may
+# exist under a different capitalization (e.g. `GroupCallForbidden`).
+# This is a *band-aid*, not a real fix: the underlying cause is having more
+# than one pyrogram fork installed at once. Run:
+#     pip uninstall -y pyrogram Kurigram kurigram pyrofork
+#     pip install -U Kurigram pytgcalls ntgcalls
+# and remove any duplicate `pyrogram` line from requirements.txt to fix it
+# properly. This shim just stops the crash in the meantime.
+import pyrogram.errors as _pyrogram_errors  # noqa: E402
+
+if not hasattr(_pyrogram_errors, "GroupcallForbidden"):
+    _fallback = getattr(_pyrogram_errors, "GroupCallForbidden", None)
+    if _fallback is None:
+        _base = getattr(_pyrogram_errors, "RPCError", Exception)
+
+        class GroupcallForbidden(_base):
+            """Shim: real pyrogram/Kurigram install did not provide this."""
+
+        _fallback = GroupcallForbidden
+    _pyrogram_errors.GroupcallForbidden = _fallback
+# --- END WORKAROUND SHIM ----------------------------------------------------
+
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
