@@ -61,6 +61,9 @@ STREAM_PREFLIGHT_TIMEOUT = max(3, int_env("YOUTUBE_STREAM_PREFLIGHT_TIMEOUT", 15
 STREAM_PREFLIGHT_ENABLED = bool_env("YOUTUBE_STREAM_PREFLIGHT", True)
 DOWNLOAD_CACHE_MAX_BYTES = max(0, int_env("DOWNLOAD_CACHE_MAX_MB", 2048)) * 1024 * 1024
 DOWNLOAD_CACHE_MIN_FREE_BYTES = max(0, int_env("DOWNLOAD_CACHE_MIN_FREE_MB", 512)) * 1024 * 1024
+# How long a downloaded/cached media file is allowed to sit in "downloads/" before
+# it is treated as stale and removed. Default: 3 hours.
+DOWNLOAD_CACHE_TTL_SECONDS = max(0, int_env("DOWNLOAD_CACHE_TTL_HOURS", 3)) * 3600
 WORKER_FALLBACK_API_ATTEMPTS = min(3, max(1, int_env("WORKER_FALLBACK_API_ATTEMPTS", 3)))
 WORKER_FALLBACK_API_RETRY_DELAY_MS = min(
     5000,
@@ -663,10 +666,24 @@ class YouTubeAPI:
 
         def cached_media_ready(filepath):
             try:
-                return (
-                    os.path.exists(filepath)
-                    and os.path.getsize(filepath) >= MIN_CACHED_MEDIA_BYTES
-                )
+                if not os.path.exists(filepath):
+                    return False
+                if os.path.getsize(filepath) < MIN_CACHED_MEDIA_BYTES:
+                    return False
+                if DOWNLOAD_CACHE_TTL_SECONDS:
+                    age = time.time() - os.path.getmtime(filepath)
+                    if age > DOWNLOAD_CACHE_TTL_SECONDS:
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
+                        logger.info(
+                            "YouTube cache expired (older than %ss), removed: %s",
+                            DOWNLOAD_CACHE_TTL_SECONDS,
+                            filepath,
+                        )
+                        return False
+                return True
             except Exception:
                 return False
 
@@ -715,11 +732,13 @@ class YouTubeAPI:
 
             files = []
             total_size = 0
+            expired_removed = 0
             try:
                 entries = list(os.scandir("downloads"))
             except OSError:
                 return True
 
+            now = time.time()
             for entry in entries:
                 try:
                     if not entry.is_file():
@@ -730,8 +749,30 @@ class YouTubeAPI:
                     stat = entry.stat()
                 except OSError:
                     continue
+
+                # Proactively drop anything past the 24h (configurable) TTL, unless
+                # it's actively in use (queued/streaming right now).
+                if (
+                    DOWNLOAD_CACHE_TTL_SECONDS
+                    and (now - stat.st_mtime) > DOWNLOAD_CACHE_TTL_SECONDS
+                    and os.path.abspath(entry.path) not in protected
+                ):
+                    try:
+                        os.remove(entry.path)
+                        expired_removed += 1
+                        continue
+                    except OSError:
+                        pass
+
                 total_size += stat.st_size
                 files.append((stat.st_mtime, stat.st_size, entry.path))
+
+            if expired_removed:
+                logger.info(
+                    "YouTube cache TTL sweep removed %s expired file(s) (older than %ss).",
+                    expired_removed,
+                    DOWNLOAD_CACHE_TTL_SECONDS,
+                )
 
             try:
                 free_bytes = shutil.disk_usage("downloads").free
