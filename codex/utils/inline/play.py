@@ -1,7 +1,6 @@
 import math
 
 from pyrogram.types import InlineKeyboardButton
-from pyrogram.enums import ButtonStyle
 from codex.utils.formatters import time_to_seconds
 
 def stream_markup_timer(_, chat_id, played, dur):
