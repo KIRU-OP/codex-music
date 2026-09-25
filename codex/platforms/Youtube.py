@@ -3,7 +3,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union
@@ -38,8 +37,6 @@ WORKER_FALLBACK_API_URL = os.getenv(
 WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid").strip()
 YTPROXY = (YTPROXY_URL or "").strip().rstrip("/")
 YT_API_KEY = (YT_API_KEY or "").strip()
-MIN_CACHED_MEDIA_BYTES = 128 * 1024
-DOWNLOAD_CACHE_EXTENSIONS = (".m4a", ".mp3", ".mp4", ".webm")
 
 
 def int_env(name: str, default: int) -> int:
@@ -59,11 +56,6 @@ def bool_env(name: str, default: bool = True) -> bool:
 STREAM_HTTP_PROBE_TIMEOUT = max(2, int_env("YOUTUBE_STREAM_HTTP_PROBE_TIMEOUT", 15))
 STREAM_PREFLIGHT_TIMEOUT = max(3, int_env("YOUTUBE_STREAM_PREFLIGHT_TIMEOUT", 15))
 STREAM_PREFLIGHT_ENABLED = bool_env("YOUTUBE_STREAM_PREFLIGHT", True)
-DOWNLOAD_CACHE_MAX_BYTES = max(0, int_env("DOWNLOAD_CACHE_MAX_MB", 2048)) * 1024 * 1024
-DOWNLOAD_CACHE_MIN_FREE_BYTES = max(0, int_env("DOWNLOAD_CACHE_MIN_FREE_MB", 512)) * 1024 * 1024
-# How long a downloaded/cached media file is allowed to sit in "downloads/" before
-# it is treated as stale and removed. Default: 3 hours.
-DOWNLOAD_CACHE_TTL_SECONDS = max(0, int_env("DOWNLOAD_CACHE_TTL_HOURS", 3)) * 3600
 WORKER_FALLBACK_API_ATTEMPTS = min(3, max(1, int_env("WORKER_FALLBACK_API_ATTEMPTS", 3)))
 WORKER_FALLBACK_API_RETRY_DELAY_MS = min(
     5000,
@@ -244,7 +236,6 @@ class YouTubeAPI:
             "cookie_downloads": 0,
             "existing_files": 0
         }
-        self._background_cache_tasks = {}
 
     def _has_disallowed_url_chars(self, link: str) -> bool:
         return any(char in link for char in [";", "&", "|", "$", "\n", "\r", "`"])
@@ -650,6 +641,9 @@ class YouTubeAPI:
         title: Union[bool, str] = None,
         stream: Union[bool, str] = True,
     ) -> str:
+        # Direct-stream only: playback never falls back to downloading a
+        # full file to disk, no matter what the caller passes in.
+        stream = True
         if videoid:
             vid_id = link
             link = self.base + link
@@ -664,292 +658,9 @@ class YouTubeAPI:
             session.mount('https://', HTTPAdapter(max_retries=retries))
             return session
 
-        def cached_media_ready(filepath):
-            try:
-                if not os.path.exists(filepath):
-                    return False
-                if os.path.getsize(filepath) < MIN_CACHED_MEDIA_BYTES:
-                    return False
-                if DOWNLOAD_CACHE_TTL_SECONDS:
-                    age = time.time() - os.path.getmtime(filepath)
-                    if age > DOWNLOAD_CACHE_TTL_SECONDS:
-                        try:
-                            os.remove(filepath)
-                        except OSError:
-                            pass
-                        logger.info(
-                            "YouTube cache expired (older than %ss), removed: %s",
-                            DOWNLOAD_CACHE_TTL_SECONDS,
-                            filepath,
-                        )
-                        return False
-                return True
-            except Exception:
-                return False
-
-        def partial_path(filepath):
-            return f"{filepath}.downloading"
-
-        def enforce_download_cache_budget(extra_bytes=0):
-            if not DOWNLOAD_CACHE_MAX_BYTES and not DOWNLOAD_CACHE_MIN_FREE_BYTES:
-                return True
-
-            os.makedirs("downloads", exist_ok=True)
-            protected = {
-                os.path.abspath(str(path))
-                for path in autoclean
-                if isinstance(path, str) and path
-            }
-            try:
-                from nexo.misc import db
-
-                for queue in (db or {}).values():
-                    for item in queue or []:
-                        if not isinstance(item, dict):
-                            continue
-                        queued_file = str(item.get("file") or "")
-                        if queued_file:
-                            protected.add(os.path.abspath(queued_file))
-
-                        videoid = str(item.get("vidid") or "").strip()
-                        if not videoid or videoid in {"telegram", "soundcloud"}:
-                            continue
-                        if not queued_file.startswith("vid_"):
-                            continue
-
-                        streamtype = str(item.get("streamtype") or "audio")
-                        ext = "mp4" if streamtype == "video" else "mp3"
-                        protected.add(
-                            os.path.abspath(os.path.join("downloads", f"{videoid}.{ext}"))
-                        )
-            except Exception:
-                pass
-            protected.update(
-                os.path.abspath(path)
-                for path, task in self._background_cache_tasks.items()
-                if task and not task.done()
-            )
-
-            files = []
-            total_size = 0
-            expired_removed = 0
-            try:
-                entries = list(os.scandir("downloads"))
-            except OSError:
-                return True
-
-            now = time.time()
-            for entry in entries:
-                try:
-                    if not entry.is_file():
-                        continue
-                    name = entry.name.lower()
-                    if name.endswith(".downloading") or not name.endswith(DOWNLOAD_CACHE_EXTENSIONS):
-                        continue
-                    stat = entry.stat()
-                except OSError:
-                    continue
-
-                # Proactively drop anything past the 24h (configurable) TTL, unless
-                # it's actively in use (queued/streaming right now).
-                if (
-                    DOWNLOAD_CACHE_TTL_SECONDS
-                    and (now - stat.st_mtime) > DOWNLOAD_CACHE_TTL_SECONDS
-                    and os.path.abspath(entry.path) not in protected
-                ):
-                    try:
-                        os.remove(entry.path)
-                        expired_removed += 1
-                        continue
-                    except OSError:
-                        pass
-
-                total_size += stat.st_size
-                files.append((stat.st_mtime, stat.st_size, entry.path))
-
-            if expired_removed:
-                logger.info(
-                    "YouTube cache TTL sweep removed %s expired file(s) (older than %ss).",
-                    expired_removed,
-                    DOWNLOAD_CACHE_TTL_SECONDS,
-                )
-
-            try:
-                free_bytes = shutil.disk_usage("downloads").free
-            except OSError:
-                free_bytes = DOWNLOAD_CACHE_MIN_FREE_BYTES
-
-            needs_cleanup = (
-                DOWNLOAD_CACHE_MAX_BYTES
-                and total_size + int(extra_bytes or 0) > DOWNLOAD_CACHE_MAX_BYTES
-            ) or (
-                DOWNLOAD_CACHE_MIN_FREE_BYTES
-                and free_bytes - int(extra_bytes or 0) < DOWNLOAD_CACHE_MIN_FREE_BYTES
-            )
-            if not needs_cleanup:
-                return True
-
-            removed = 0
-            removed_bytes = 0
-            for _, size, path in sorted(files):
-                if os.path.abspath(path) in protected:
-                    continue
-                try:
-                    os.remove(path)
-                except OSError:
-                    continue
-                total_size -= size
-                free_bytes += size
-                removed += 1
-                removed_bytes += size
-                if (
-                    (not DOWNLOAD_CACHE_MAX_BYTES or total_size <= DOWNLOAD_CACHE_MAX_BYTES)
-                    and (
-                        not DOWNLOAD_CACHE_MIN_FREE_BYTES
-                        or free_bytes >= DOWNLOAD_CACHE_MIN_FREE_BYTES
-                    )
-                ):
-                    break
-
-            if removed:
-                logger.info(
-                    "YouTube cache budget cleanup removed %s file(s) (%s bytes).",
-                    removed,
-                    removed_bytes,
-                )
-
-            return (
-                (not DOWNLOAD_CACHE_MAX_BYTES or total_size <= DOWNLOAD_CACHE_MAX_BYTES)
-                and (
-                    not DOWNLOAD_CACHE_MIN_FREE_BYTES
-                    or free_bytes >= DOWNLOAD_CACHE_MIN_FREE_BYTES
-                )
-            )
-
-        async def download_with_ytdlp(url, filepath, headers=None, max_retries=3):
-            default_headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://www.youtube.com/",
-            }
-            merged_headers = default_headers.copy()
-            if headers:
-                merged_headers.update(headers)
-            temp_filepath = partial_path(filepath)
-
-            # yt-dlp handles direct media URLs, reuse the running loop to avoid blocking the event loop.
-            def run_download():
-                ydl_opts = {
-                    "quiet": True,
-                    "no_warnings": True,
-                    "noprogress": True,
-                    "outtmpl": temp_filepath,
-                    "force_overwrites": True,
-                    "nopart": True,
-                    "retries": max_retries,
-                    "http_headers": merged_headers,
-                    "concurrent_fragment_downloads": 8,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-
-            try:
-                if os.path.exists(temp_filepath):
-                    os.remove(temp_filepath)
-                await loop.run_in_executor(None, run_download)
-                if os.path.exists(temp_filepath):
-                    os.replace(temp_filepath, filepath)
-                    return filepath
-            except Exception as e:
-                logger.error(f"yt-dlp download failed: {str(e)}")
-            if os.path.exists(temp_filepath):
-                os.remove(temp_filepath)
-            return None
-
-        async def download_with_requests_fallback(url, filepath, headers=None):
-            session = None
-            temp_filepath = partial_path(filepath)
-            try:
-                session = create_session()
-                
-                # Use headers for authentication (including x-api-key)
-                response = session.get(url, headers=headers, stream=True, timeout=60)
-                response.raise_for_status()
-                
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded = 0
-                chunk_size = 1024 * 1024 
-                
-                if os.path.exists(temp_filepath):
-                    os.remove(temp_filepath)
-                with open(temp_filepath, 'wb') as file:
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            file.write(chunk)
-                            downloaded += len(chunk)
-                os.replace(temp_filepath, filepath)
-                return filepath
-                
-            except Exception as e:
-                logger.error(f"Requests download failed: {str(e)}")
-                if os.path.exists(temp_filepath):
-                    os.remove(temp_filepath)
-                return None
-            finally:
-                if session:
-                    session.close()
-
-        async def download_from_source(url, filepath, headers=None):
-            result = await download_with_ytdlp(url, filepath, headers)
-            if result:
-                return result
-            return await download_with_requests_fallback(url, filepath, headers)
-
         async def validate_stream_source(url):
             media_type = "video" if video else "audio"
             return await validate_playable_stream_url(url, media_type)
-
-        def schedule_background_cache(url, filepath, headers=None):
-            if not url or not filepath or cached_media_ready(filepath):
-                return
-            existing = self._background_cache_tasks.get(filepath)
-            if existing and not existing.done():
-                return
-            if not enforce_download_cache_budget():
-                logger.warning(
-                    "Skipping background cache because download cache budget is exhausted | file=%s",
-                    os.path.basename(filepath),
-                )
-                return
-
-            async def cache_job():
-                try:
-                    await download_from_source(url, filepath, headers)
-                    enforce_download_cache_budget()
-                except Exception as exc:
-                    logger.warning(f"Background cache failed for {os.path.basename(filepath)}: {exc}")
-                finally:
-                    self._background_cache_tasks.pop(filepath, None)
-
-            self._background_cache_tasks[filepath] = asyncio.create_task(cache_job())
-
-        async def wait_for_background_cache(filepath):
-            task = self._background_cache_tasks.get(filepath)
-            if not task:
-                return None
-            try:
-                await task
-            except Exception:
-                pass
-            if cached_media_ready(filepath):
-                return filepath
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except Exception:
-                    pass
-            return None
 
         def first_media_url(value, media_format=None):
             if isinstance(value, str):
@@ -1070,21 +781,6 @@ class YouTubeAPI:
                 message,
             )
 
-        def schedule_worker_background_cache(media, filepath, media_type, vid_id):
-            cache_url = (media or {}).get("cache_url") or (media or {}).get("play_url")
-            if not cache_url:
-                return
-            logger.info(
-                "YouTube background cache scheduled | source=worker_primary | media=%s | video_id=%s | title=%s | play_link=%s | cache_link=%s | same_url=%s",
-                media_type,
-                vid_id,
-                log_title,
-                (media or {}).get("play_key") or "-",
-                (media or {}).get("cache_key") or "-",
-                cache_url == (media or {}).get("play_url"),
-            )
-            schedule_background_cache(cache_url, filepath)
-
         def fetch_worker_fallback_links_sync(vid_id, media_format):
             if not WORKER_FALLBACK_API_URL or not WORKER_FALLBACK_API_KEY:
                 logger.warning("Worker fallback API URL/key not set. Skipping worker fallback.")
@@ -1169,20 +865,6 @@ class YouTubeAPI:
             )
 
         async def audio_dl(vid_id):
-            filepath = os.path.join("downloads", f"{vid_id}.mp3")
-            if cached_media_ready(filepath):
-                mark_source(vid_id, "audio", "LOCAL CACHE")
-                return filepath, True
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except Exception:
-                    pass
-            if not stream:
-                cached = await wait_for_background_cache(filepath)
-                if cached:
-                    return cached, True
-
             headers = {
                 "x-api-key": f"{YT_API_KEY}",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -1191,16 +873,10 @@ class YouTubeAPI:
             worker_audio = await get_worker_fallback_links(vid_id, "mp3")
             if worker_audio:
                 worker_audio_url = worker_audio.get("play_url")
-                worker_audio_cache_url = worker_audio.get("cache_url") or worker_audio_url
-                if stream and await validate_stream_source(worker_audio_url):
+                if await validate_stream_source(worker_audio_url):
                     mark_source(vid_id, "audio", "WORKER PRIMARY")
-                    schedule_worker_background_cache(worker_audio, filepath, "audio", vid_id)
                     return worker_audio_url, False
-                result = await download_from_source(worker_audio_cache_url, filepath)
-                if result:
-                    mark_source(vid_id, "audio", "WORKER PRIMARY")
-                    return result, True
-                logger.warning("Worker audio URL download failed, trying xBit fallback.")
+                logger.warning("Worker audio stream URL failed validation, trying xBit fallback.")
 
             xbit_audio_url = None
             if YT_API_KEY and YTPROXY:
@@ -1237,15 +913,9 @@ class YouTubeAPI:
             else:
                 logger.info("xBit fallback not configured for audio.")
 
-            if xbit_audio_url:
-                if stream and await validate_stream_source(xbit_audio_url):
-                    mark_source(vid_id, "audio", "XBIT FALLBACK")
-                    schedule_background_cache(xbit_audio_url, filepath, headers)
-                    return xbit_audio_url, False
-                result = await download_from_source(xbit_audio_url, filepath, headers)
-                if result:
-                    mark_source(vid_id, "audio", "XBIT FALLBACK")
-                    return result, True
+            if xbit_audio_url and await validate_stream_source(xbit_audio_url):
+                mark_source(vid_id, "audio", "XBIT FALLBACK")
+                return xbit_audio_url, False
 
             mark_source(vid_id, "audio", "WORKER PRIMARY + XBIT FALLBACK", ok=False)
             logger.error(
@@ -1253,24 +923,10 @@ class YouTubeAPI:
                 vid_id,
                 log_title,
             )
-            return None, True
+            return None, False
         
         
         async def video_dl(vid_id):
-            filepath = os.path.join("downloads", f"{vid_id}.mp4")
-            if cached_media_ready(filepath):
-                mark_source(vid_id, "video", "LOCAL CACHE")
-                return filepath, True
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except Exception:
-                    pass
-            if not stream:
-                cached = await wait_for_background_cache(filepath)
-                if cached:
-                    return cached, True
-
             headers = {
                 "x-api-key": f"{YT_API_KEY}",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -1279,16 +935,10 @@ class YouTubeAPI:
             worker_video = await get_worker_fallback_links(vid_id, "mp4")
             if worker_video:
                 worker_video_url = worker_video.get("play_url")
-                worker_video_cache_url = worker_video.get("cache_url") or worker_video_url
-                if stream and await validate_stream_source(worker_video_url):
+                if await validate_stream_source(worker_video_url):
                     mark_source(vid_id, "video", "WORKER PRIMARY")
-                    schedule_worker_background_cache(worker_video, filepath, "video", vid_id)
                     return worker_video_url, False
-                result = await download_from_source(worker_video_cache_url, filepath)
-                if result:
-                    mark_source(vid_id, "video", "WORKER PRIMARY")
-                    return result, True
-                logger.warning("Worker video URL download failed, trying xBit fallback.")
+                logger.warning("Worker video stream URL failed validation, trying xBit fallback.")
 
             xbit_video_url = None
             if YT_API_KEY and YTPROXY:
@@ -1325,15 +975,9 @@ class YouTubeAPI:
             else:
                 logger.info("xBit fallback not configured for video.")
 
-            if xbit_video_url:
-                if stream and await validate_stream_source(xbit_video_url):
-                    mark_source(vid_id, "video", "XBIT FALLBACK")
-                    schedule_background_cache(xbit_video_url, filepath, headers)
-                    return xbit_video_url, False
-                result = await download_from_source(xbit_video_url, filepath, headers)
-                if result:
-                    mark_source(vid_id, "video", "XBIT FALLBACK")
-                    return result, True
+            if xbit_video_url and await validate_stream_source(xbit_video_url):
+                mark_source(vid_id, "video", "XBIT FALLBACK")
+                return xbit_video_url, False
 
             mark_source(vid_id, "video", "WORKER PRIMARY + XBIT FALLBACK", ok=False)
             logger.error(
@@ -1341,7 +985,7 @@ class YouTubeAPI:
                 vid_id,
                 log_title,
             )
-            return None, True
+            return None, False
         
         def song_video_dl():
             formats = f"{format_id}+140"
