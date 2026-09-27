@@ -1,4 +1,5 @@
-import sys
+import asyncio
+
 from pyrogram import Client
 
 import config
@@ -8,169 +9,158 @@ from ..logging import LOGGER
 assistants = []
 assistantids = []
 
+ASSISTANT_START_TIMEOUT = 60
+ASSISTANT_STEP_TIMEOUT = 15
 
-class Userbot(Client):
+GROUPS_TO_JOIN = [
+    "about_me_venom",
+    "about_deadly_venom",
+    "kiru_bots",
+    "NEXO_BOT_SUPPORT",
+    
+]
+
+
+async def _run_with_timeout(awaitable, timeout: int, label: str):
+    try:
+        return await asyncio.wait_for(awaitable, timeout=timeout)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"{label} timed out after {timeout}s") from None
+
+
+def _has_session(value) -> bool:
+    session = str(value or "").strip()
+    return bool(session and session.lower() not in {"none", "null"})
+
+
+# Initialize userbots
+class Userbot:
     def __init__(self):
         self.one = Client(
-            name="AnonXAss1",
-            api_id=config.API_ID,
-            api_hash=config.API_HASH,
+            "codexAssis1",
+            config.API_ID,
+            config.API_HASH,
             session_string=str(config.STRING1),
             no_updates=True,
         )
         self.two = Client(
-            name="AnonXAss2",
-            api_id=config.API_ID,
-            api_hash=config.API_HASH,
+            "codexAssis2",
+            config.API_ID,
+            config.API_HASH,
             session_string=str(config.STRING2),
             no_updates=True,
         )
         self.three = Client(
-            name="AnonXAss3",
-            api_id=config.API_ID,
-            api_hash=config.API_HASH,
+            "codexAssis3",
+            config.API_ID,
+            config.API_HASH,
             session_string=str(config.STRING3),
             no_updates=True,
         )
         self.four = Client(
-            name="AnonXAss4",
-            api_id=config.API_ID,
-            api_hash=config.API_HASH,
+            "codexAssis4",
+            config.API_ID,
+            config.API_HASH,
             session_string=str(config.STRING4),
             no_updates=True,
         )
         self.five = Client(
-            name="AnonXAss5",
-            api_id=config.API_ID,
-            api_hash=config.API_HASH,
+            "codexAssis5",
+            config.API_ID,
+            config.API_HASH,
             session_string=str(config.STRING5),
             no_updates=True,
         )
 
+    async def start_assistant(self, client: Client, index: int):
+        string_attr = [
+            config.STRING1,
+            config.STRING2,
+            config.STRING3,
+            config.STRING4,
+            config.STRING5,
+        ][index - 1]
+        if not _has_session(string_attr):
+            return False
+
+        try:
+            LOGGER(__name__).info(f"Starting Assistant {index}...")
+            await _run_with_timeout(
+                client.start(),
+                ASSISTANT_START_TIMEOUT,
+                f"Assistant {index} client.start()",
+            )
+
+            me = await _run_with_timeout(
+                client.get_me(),
+                ASSISTANT_STEP_TIMEOUT,
+                f"Assistant {index} get_me()",
+            )
+            client.id, client.name, client.username = me.id, me.first_name, me.username
+
+            if index not in assistants:
+                assistants.append(index)
+            if me.id not in assistantids:
+                assistantids.append(me.id)
+
+            LOGGER(__name__).info(f"Assistant {index} authenticated as {client.name}")
+
+            for group in GROUPS_TO_JOIN:
+                try:
+                    await _run_with_timeout(
+                        client.join_chat(group),
+                        ASSISTANT_STEP_TIMEOUT,
+                        f"Assistant {index} join_chat({group})",
+                    )
+                except Exception as e:
+                    LOGGER(__name__).warning(
+                        f"Assistant {index} could not join @{group}: {e}"
+                    )
+
+            try:
+                await _run_with_timeout(
+                    client.send_message(
+                        config.LOGGER_ID, f"nexo Assistant {index} Started"
+                    ),
+                    ASSISTANT_STEP_TIMEOUT,
+                    f"Assistant {index} log message",
+                )
+            except Exception as e:
+                LOGGER(__name__).warning(
+                    f"Assistant {index} can't send log group startup message: {e}"
+                )
+
+            LOGGER(__name__).info(f"Assistant {index} Started as {client.name}")
+            return True
+
+        except Exception as e:
+            LOGGER(__name__).error(f"Failed to start Assistant {index}: {e}")
+            try:
+                await _run_with_timeout(
+                    client.stop(),
+                    ASSISTANT_STEP_TIMEOUT,
+                    f"Assistant {index} stop after failed start",
+                )
+            except Exception:
+                pass
+            return False
+
     async def start(self):
-        LOGGER(__name__).info(f"Starting Assistants...")
-        if config.STRING1:
-            await self.one.start()
-            try:
-                await self.one.join_chat("about_deadly_venom")
-                await self.one.join_chat("about_deadly_venom")
-            except:
-                pass
-            assistants.append(1)
-            try:
-                await self.one.send_message(config.LOGGER_ID, "Assistant Started")
-            except:
-                LOGGER(__name__).error(
-                    "Assistant Account 1 has failed to access the log Group. Make sure that you have added your assistant to your log group and promoted as admin!"
-                )
-                exit()
-            self.one.id = self.one.me.id
-            self.one.name = self.one.me.mention
-            if not self.one.me.username:
-                LOGGER(__name__).error("Please set username to assistants and restart the bot again")
-                sys.exit()
-            self.one.username = self.one.me.username
-            assistantids.append(self.one.id)
-            LOGGER(__name__).info(f"Assistant Started as {self.one.name}")
-
-        if config.STRING2:
-            await self.two.start()
-            try:
-                await self.two.join_chat("about_deadly_venom")
-                await self.one.join_chat("about_deadly_venom")
-            except:
-                pass
-            assistants.append(2)
-            try:
-                await self.two.send_message(config.LOGGER_ID, "Assistant Started")
-            except:
-                LOGGER(__name__).error(
-                    "Assistant Account 2 has failed to access the log Group. Make sure that you have added your assistant to your log group and promoted as admin!"
-                )
-                exit()
-            self.two.id = self.two.me.id
-            self.two.name = self.two.me.mention
-            if not self.two.me.username:
-                LOGGER(__name__).error("Please set username to assistants and restart the bot again")
-                sys.exit()
-            self.two.username = self.two.me.username
-            assistantids.append(self.two.id)
-            LOGGER(__name__).info(f"Assistant Two Started as {self.two.name}")
-
-        if config.STRING3:
-            await self.three.start()
-            try:
-                await self.three.join_chat("about_deadly_venom")
-                await self.one.join_chat("about_deadly_venom")
-            except:
-                pass
-            assistants.append(3)
-            try:
-                await self.three.send_message(config.LOGGER_ID, "Assistant Started")
-            except:
-                LOGGER(__name__).error(
-                    "Assistant Account 3 has failed to access the log Group. Make sure that you have added your assistant to your log group and promoted as admin! "
-                )
-                exit()
-            self.three.id = self.three.me.id
-            self.three.name = self.three.me.mention
-            if not self.three.me.username:
-                LOGGER(__name__).error("Please set username to assistants and restart the bot again")
-                sys.exit()
-            self.three.username = self.three.me.username
-            assistantids.append(self.three.id)
-            LOGGER(__name__).info(f"Assistant Three Started as {self.three.name}")
-
-        if config.STRING4:
-            await self.four.start()
-            try:
-                await self.four.join_chat("about_deadly_venom")
-                await self.one.join_chat("about_deadly_venom")
-            except:
-                pass
-            assistants.append(4)
-            try:
-                await self.four.send_message(config.LOGGER_ID, "Assistant Started")
-            except:
-                LOGGER(__name__).error(
-                    "Assistant Account 4 has failed to access the log Group. Make sure that you have added your assistant to your log group and promoted as admin! "
-                )
-                exit()
-            self.four.id = self.four.me.id
-            self.four.name = self.four.me.mention
-            if not self.four.me.username:
-                LOGGER(__name__).error("Please set username to assistants and restart the bot again")
-                sys.exit()
-            self.four.username = self.four.me.username
-            assistantids.append(self.four.id)
-            LOGGER(__name__).info(f"Assistant Four Started as {self.four.name}")
-
-        if config.STRING5:
-            await self.five.start()
-            try:
-                await self.five.join_chat("about_deadly_venom")
-                await self.one.join_chat("about_deadly_venom")
-            except:
-                pass
-            assistants.append(5)
-            try:
-                await self.five.send_message(config.LOGGER_ID, "Assistant Started")
-            except:
-                LOGGER(__name__).error(
-                    "Assistant Account 5 has failed to access the log Group. Make sure that you have added your assistant to your log group and promoted as admin! "
-                )
-                exit()
-            self.five.id = self.five.me.id
-            self.five.name = self.five.me.mention
-            if not self.five.me.username:
-                LOGGER(__name__).error("Please set username to assistants and restart the bot again")
-                sys.exit()
-            self.five.username = self.five.me.username
-            assistantids.append(self.five.id)
-            LOGGER(__name__).info(f"Assistant Five Started as {self.five.name}")
+        LOGGER(__name__).info("Starting nexo Assistants...")
+        await self.start_assistant(self.one, 1)
+        await self.start_assistant(self.two, 2)
+        await self.start_assistant(self.three, 3)
+        await self.start_assistant(self.four, 4)
+        await self.start_assistant(self.five, 5)
+        if not assistants:
+            LOGGER(__name__).error(
+                "No assistants started. Check STRING_SESSION values and assistant logs."
+            )
+            exit()
+        LOGGER(__name__).info(f"Assistants ready: {', '.join(map(str, assistants))}")
 
     async def stop(self):
-        LOGGER(__name__).info(f"Stopping Assistants...")
+        LOGGER(__name__).info("Stopping Assistants...")
         try:
             if config.STRING1:
                 await self.one.stop()
@@ -182,5 +172,5 @@ class Userbot(Client):
                 await self.four.stop()
             if config.STRING5:
                 await self.five.stop()
-        except:
-            pass
+        except Exception as e:
+            LOGGER(__name__).error(f"Error while stopping assistants: {e}")
