@@ -8,8 +8,8 @@ from typing import Union, Optional, Tuple, List
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
-from NEOMUSIC.utils.formatters import time_to_seconds
-from NEOMUSIC import LOGGER
+from codex.utils.formatters import time_to_seconds
+from codex import LOGGER
 
 # --- CONFIGURATION ---
 from config import API_ID, BOT_TOKEN, MONGO_DB_URI, YOUTUBE_IMG_URL
